@@ -1,8 +1,12 @@
 from vpython import graph, gcurve, color
 from Environment import Environment
 
+environment = Environment()
+
 class PlotManager:
-    def __init__(self, time_flight, max_x, max_y, max_y_velocity, max_angular_velocity):
+    def __init__(self, time_flight, max_x, max_y, max_y_velocity, max_angular_velocity, max_reynolds):
+
+        
         # X and Y Position graphs
         self.graph_X_pos = graph(title='<b>X Position over Time</b>', xtitle='Time', ytitle='X position',
                                  xmin=0, xmax=time_flight, ymin=0, ymax=max_x)
@@ -26,14 +30,21 @@ class PlotManager:
                                             xmin=0, xmax=time_flight, ymin=-max_angular_velocity, ymax=max_angular_velocity)
         self.draw_angular_velocity = gcurve(color=color.magenta, graph=self.graph_angular_velocity, label='Angular Vel')
 
+        # Reynolds Number graph
+        self.graph_reynolds = graph(title='<b>Reynolds Number over Time</b>', xtitle='Time', ytitle='Reynolds Number',
+                                            xmin=0, xmax=time_flight, ymin=0, ymax=10000)
+        self.draw_reynolds = gcurve(color=color.magenta, graph=self.graph_reynolds, label='Reynolds Number')
 
-    def update(self, t, ball):
+
+
+    def update(self, t, projectile):
          # Update position and velocity plots
-        self.draw_X_pos.plot(pos=(t, ball.pos.x))
-        self.draw_Y_pos.plot(pos=(t, ball.pos.y))
-        self.draw_X_velocity.plot(pos=(t, ball.vel.x))
-        self.draw_Y_velocity.plot(pos=(t, ball.vel.y))
-        self.draw_angular_velocity.plot(pos=(t, ball.angular_velocity.z))
+        self.draw_X_pos.plot(pos=(t, projectile.pos.x))
+        self.draw_Y_pos.plot(pos=(t, projectile.pos.y))
+        self.draw_X_velocity.plot(pos=(t, projectile.vel.x))
+        self.draw_Y_velocity.plot(pos=(t, projectile.vel.y))
+        self.draw_angular_velocity.plot(pos=(t, projectile.angular_velocity.z))
+        self.draw_reynolds.plot(pos=(t, environment.calculate_reynolds_number_p(projectile)))
       
        
 

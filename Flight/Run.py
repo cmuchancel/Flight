@@ -6,49 +6,75 @@ from Ball import Ball
 from Visualization import Visualization
 
 
-#Variables
-drop_height = 10
-ball_mass = 0.5
-ball_radius = 0.5
+#Initialize projectile
+projectile = Ball(
+   
+    mass = 1.43 * 10 ** (-11),
+    radius = 0.00005,
+    initial_position = vector(0, 10, 0),
+    initial_velocity = vector(0, 0, 0),
+    initial_angular_speed = 1,
+    initial_rot_direction = "counterclockwise"
 
-#Initial Velocities
-initial_horizontal_velocity = 1
-initial_vertical_velocity = 0
-initial_z_velocity = 0
-initial_rotational_speed = 0
-initial_rotational_direction = "counterclockwise"
+    )
+print(f"Initial angular velocity: {projectile.angular_velocity}")
+
+
+'''projectile = Disk(
+    mass = 0.5,
+    radius = 0.5,
+    thickness = .01,
+    initial_position = vector(0, 10, 0),
+    initial_velocity = vector(0, 0, 0),
+    initial_angular_speed = 0,
+    initial_rot_direction = "counterclockwise"
+)'''
+
 
 #Runtime Variables
-dt= 0.01
+dt= 0.001
 t=0
 plottedTime=2
 
-# Initialize objects
+# Auto Initialized other class objects
 environment = Environment()
-ball = Ball(mass=ball_mass, radius=ball_radius, initial_position=vector(0, drop_height, 0), initial_velocity=vector(initial_horizontal_velocity, initial_vertical_velocity, initial_z_velocity),initial_angular_speed = initial_rotational_speed, initial_rot_direction = initial_rotational_direction)
-plot_manager = PlotManager(time_flight=plottedTime, max_x=1.5, max_y=drop_height * 1.05, max_y_velocity=15, max_angular_velocity=5)
-visualization = Visualization(ball_radius=ball_radius, drop_height=drop_height)
 
-#RUN IT
-while(ball.pos.y >= 2 * ball.radius):
-    rate(25)
+
+plot_manager = PlotManager(
+
+    time_flight=plottedTime, 
+    max_x=1.5, 
+    max_y=projectile.pos.y * 1.05, 
+    max_y_velocity=15, 
+    max_angular_velocity=5,
+    max_reynolds = 10000
+
+    )
+
+visualization = Visualization(projectile)
+
+while(projectile.pos.y >= 2 * projectile.radius):  #CHANGE FOR DISK
+    rate(1000)
     # Calculate forces   (ADD DRAG FORCE, ADD MAGNUS EFFECT PSUEDOFORCE)
-    gravity_force = environment.calculate_force_gravity(ball)
-    gravity_torque = environment.calculate_torque_gravity(ball)
-    drag_force = environment.calculate_drag(ball)
-    net_force = gravity_force + drag_force
-    net_torque = gravity_torque 
+    gravity_force = environment.calculate_force_gravity(projectile)
+    drag_force = environment.calculate_drag_force(projectile)
+    lift_force = environment.calculate_lift_force(projectile)
+    net_force = gravity_force + drag_force + lift_force
     # Calculate Torques
-    
+    gravity_torque = environment.calculate_torque_gravity(projectile)
+    drag_torque = environment.calculate_drag_torque(projectile)
+    net_torque = gravity_torque + drag_torque
     # Apply forces 
-    ball.apply_net_force(net_force, dt)
-    ball.apply_net_torque(net_torque, dt)
+    environment.apply_net_force(projectile, net_force, dt)
+    environment.apply_net_torque(projectile, net_torque, dt)
 
     #Update Visualization
-    visualization.update_ball_position(ball.pos)
+    visualization.update_projectile_position(projectile.pos)
 
     # Update plots
-    plot_manager.update(t, ball)
-    
+    plot_manager.update(t, projectile)
+    print(environment.calculate_reynolds_number_p(projectile))
     t = t + dt
+    print(f"Re_p: {environment.calculate_reynolds_number_p(projectile)}, R_r: {environment.calculate_dimensionless_rotation_rate(projectile)}")
+
 
