@@ -1,4 +1,6 @@
-from vpython import canvas, box, sphere, vector, color, cylinder
+from sympy import Curve
+from vpython import canvas, box, sphere, vector, color, cylinder, curve
+from math import *
 from Ball import Ball  # Import Ball class
 
 
@@ -9,10 +11,11 @@ class Visualization:
                             center=vector(0, projectile.pos.y / 2, 0), background=color.white)
 
           # Create walls and floor
-        self.left_wall = box(pos=vector(-2 * projectile.radius, projectile.pos.y / 2, 0),
-                             size=vector(1, 9, 5), color=color.red)
-        self.floor = box(pos=vector(9, 0, 0), size=vector(21, 1, 5), color=color.green)
-        
+        self.left_wall = box(pos=vector(-10, projectile.pos.y/2, 0),
+                             size=vector(10, projectile.pos.y, 5), color=color.red)
+        self.floor = box(pos=vector(projectile.pos.y/2, -5, 0), size=vector(1*projectile.pos.y, 10, 5), color=color.green)
+        projectile.trail = curve(color=color.magenta)
+        projectile.trail.append(pos=projectile.pos)
           # Create the projectile visualization based on type
         if isinstance(projectile, Ball):
             # Create a sphere if the projectile is a Ball
