@@ -2,7 +2,10 @@ from vpython import *
 from Ball import Ball  # Import Ball class
 import math  # Import math module
 from Exceptions import ReValueError, RrValueError, DragCoefficientUnknownError
+import warnings  # Import the warnings module
 
+# Ensure warnings are displayed only once
+warnings.simplefilter("once", UserWarning)
 
 
 class Environment:
@@ -14,7 +17,8 @@ class Environment:
     air_temperature_celsius = 20  
 
     def __init__(self):
-        pass  # No need for instance-specific initialization unless required
+        self.torque_warning_displayed = False  # Flag to track if warning has been displayed
+        
 
     def calculate_force_gravity(self, projectile):
         height = projectile.pos.y
@@ -62,7 +66,7 @@ class Environment:
 
         gamma_kinematic_viscosity = mu_dynamic_viscosity_coefficient / Environment.air_density
 
-        Re_ohm = ( projectile.angular_velocity * projectile.radius**2 ) / (gamma_kinematic_viscosity)
+        Re_ohm = ( mag(projectile.angular_velocity) * projectile.radius**2 ) / (gamma_kinematic_viscosity)
 
         Re_p = self.calculate_reynolds_number_p(projectile)
 
@@ -78,40 +82,41 @@ class Environment:
         re_p = self.calculate_reynolds_number_p(projectile) #Reynolds number 
         r_r = self.calculate_dimensionless_rotation_rate(projectile) #dimensionless rotation rate
     
-        coefficient_lift_rotation = 0 #coefficinet of lift due to rotation 
-        coefficient_lift_shear_flow = 0 #coefficinet of lift due to shear flow 
+        lift_coefficient_shear_flow = 0 #coefficinet of lift due to shear flow is 0 because our atmosphere is "stationary"
+        #   lift_coefficient = lift_coefficient_shear_flow + lift_coefficient_rotation 
 
         #CALCULATE COEFFICIENT OF LIFT DUE TO ROTATION:
+        if r_r == 0:
+            return 0
 
+        if re_p >= 200:
+            raise ReValueError(f"No accurate lift coefficient due to rotation correlation for Re = {re_p}; value exceeded 200. At Re > 200, Burification starts to take effect")
+        
         if re_p == 0 or r_r == "No freestream velocity": # Chance "If it's not moving then there's no drag"
-            coefficient_lift_rotation = 0
-
+            return 0
+        
         if re_p <= 0.1: # Loth eq 12
-            coefficient_lift_rotation=r_r(1-(0.675+0.15(*1+math.tanh(0.28(r_r-2))))*math.tanh(0.18*re_p**1/2))
-
+            lift_coefficient_rotation= r_r * (1 - ( 0.675 +  0.15 * (1 + math.tanh( 0.28 * (r_r - 2)))) * math.tanh(0.18 * re_p ** (1/2)))
+            return lift_coefficient_rotation +   lift_coefficient_shear_flow
+        
         if re_p >= 10 and re_p <= 140 and r_r >=2 and r_r <= 12: # Osterle
-            coefficient_lift_rotation = 0.45 + (r_r - 0.45)**(-0.05684*(r_r**0.4)*(re_p**0.7))
-
-        else: # Present Correlation eq 13
-            coefficient_lift_rotation = 1 - 0.62*math.tanh(0.3*re_p**1/2) - (0.24*math.tanh(0.01*re_p)*(math.cosh(0.8*r_r**1/2)/math.sinh(0.8*r_r**1/2))*math.atan(0.47(r_r-1))) 
-
-        if re_p >=140:
-            raise ReValueError(f"No accurate lift coefficient due to rotation correlation for Re = {re_p}; value exceeded 140.")
+            lift_coefficient_rotation = 0.45 + (r_r - 0.45) ** ((-0.05684) * (r_r**0.4)*( re_p ** 0.7))
+            return lift_coefficient_rotation +  lift_coefficient_shear_flow
         
-        #CALCULATE COEFFICIENT OF LIFT DUE TO SHEAR FLOW:
-
+        # Present Correlation eq 13
+        lift_coefficient_rotation = r_r * (1 - 0.62 * math.tanh(0.3 * re_p ** (1/2)) - (0.24 * math.tanh(0.01*re_p) *  (math.cosh(0.8 * r_r ** (1/2)) / math.sinh(0.8 * r_r ** (1/2)) )* math.atan(0.47 * (r_r - 1)) ) )
+        return lift_coefficient_rotation +  lift_coefficient_shear_flow
+ 
         
-
-
-
-        
-
-
-
-        
-
     
+    def calculate_lift_force(self, projectile):
+        
+        lift_coefficient = self.calculate_lift_coefficient(projectile)
+    
+        lift_force = (1/2) * lift_coefficient * math.pi * (projectile.radius ** 2) * self.air_density * mag2(projectile.vel) * norm(cross(-projectile.vel, projectile.angular_velocity)) 
 
+        return lift_force
+            
 
     def calculate_drag_coefficient(self, projectile):
         reynolds_number = self.calculate_reynolds_number_p(projectile)
@@ -119,10 +124,10 @@ class Environment:
 
         
         if reynolds_number == 0 or dimensionless_rotation_rate == "Projectile Not Translating": #If object isnt moving, no lift. IF object isnt moving, Re = 0
-            return "Use Stokes Drag"
+            return 0
         
-        if reynolds_number < 0.1:
-            return "Use Stokes Drag"
+        if reynolds_number < 2:
+            return 24/reynolds_number
         
         #Calculating C_d, Drag Coefficient for Non-Spinning Sphere Using Michigan Tech's Correlation
         term1 = 24 / reynolds_number
@@ -161,9 +166,9 @@ class Environment:
         :return: Drag force as a vector
         """
         drag_coefficient = self.calculate_drag_coefficient(projectile)
-
+    
         if drag_coefficient == "Use Stokes Drag" :
-            Force = - 6 * math.pi * Environment.calculate_dynamic_viscosity_coefficient * projectile.radius * mag(projectile.vel) * norm(projectile.vel)
+            Force = - 6 * math.pi * Environment.calculate_dynamic_viscosity_coefficient() * projectile.radius * mag(projectile.vel) * norm(projectile.vel)
             return Force
         
         else:
@@ -173,17 +178,29 @@ class Environment:
         
         
         
-    def calculate_drag_torque(self, projectile):
-        self.update_flow_regime(projectile)
+    def calculate_torque(self, projectile):
+        reynolds_number = self.calculate_reynolds_number_p(projectile)
+        lambda_aspect_ratio = 1  # Projectile is a sphere
+        dimensionless_rotation_rate = self.calculate_dimensionless_rotation_rate(projectile)
 
-        if self.flow_regime == "Creeping Flow":
-            # Stokes' Torque : T_d = -8 * pi * dynamic_viscosity_coefficient * r^3 * angular_velocity             FROM Low Reynolds number hydrodynamics by John Happel, Adapted from Equation 7-8.21 , PAGE 351
-            dynamic_viscosity_coefficient = self.calculate_dynamic_viscosity_coefficient() 
-            Torque = - 8 * math.pi * dynamic_viscosity_coefficient * projectile.radius**3 * projectile.angular_velocity
-            return Torque
-        else:
-            return vector(0,0,0) #CODE TORQUE FOR OTHER FLOW TYPES
+        if reynolds_number > 50 and dimensionless_rotation_rate > 0.1:
+            raise ReValueError(f"Torque calculation error: Re = {reynolds_number}, R_r = {dimensionless_rotation_rate}; No accurate Torque Calculation for Re > 50 and the Rotation is not negligible, therefore, cannot be ignored.")
 
+        if reynolds_number > 50 and dimensionless_rotation_rate < 0.1:
+            if not self.torque_warning_displayed:  # Check if the warning has been displayed before
+                warnings.warn(
+                    f"Torque calculation accuracy is questionable for Re = {reynolds_number} "
+                    f"and R_r = {dimensionless_rotation_rate}. However, torque is negligible due to low R_r.",
+                    UserWarning
+                )
+                self.torque_warning_displayed = True
+        
+            
+        second_order_torque = lambda_aspect_ratio * self.air_density * ( mag2(projectile.vel) ) * (projectile.radius ** 3) * dot(norm(projectile.angular_velocity), norm(projectile.vel)) * cross(norm(projectile.angular_velocity), norm(projectile.vel))
+        return second_order_torque
+    
+        
+    
     def apply_net_force(self, projectile, force, dt):
         # Update momentum and velocity
         projectile.mom += force * dt
