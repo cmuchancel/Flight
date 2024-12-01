@@ -13,14 +13,38 @@ class Environment:
     G = 6.67e-11
     earth_mass = 5.792e24
     earth_radius = 6.371e6 
-    air_density = 1.225 
-    air_temperature_celsius = 20  
+    gas_constant_air = 287.05  # Specific gas constant for air (J/(kg·K))
+    sutherland_constant = 110.4  # Sutherland constant for air (K)
+    reference_temperature = 288.15  # Reference temperature at sea level (K)
+    reference_viscosity = 1.7894e-5  # Reference dynamic viscosity at sea level (Pa·s)
+
 
     def __init__(self):
         self.torque_warning_displayed = False  # Flag to track if warning has been displayed
         self.used_correlations = []
-        
 
+    def calculate_temperature_and_pressure_at_altitude(self, altitude):
+        # Calculates temperature and pressure at the given altitude (meters).
+        if altitude <= 11000:  # Troposphere
+            temperature = self.reference_temperature - 0.0065 * altitude
+            pressure = 101325 * (temperature / self.reference_temperature) ** (9.80665 / (0.0065 * self.gas_constant_air))
+        elif altitude <= 20000:  # Lower Stratosphere
+            temperature = 216.65
+            pressure = 22632.06 * math.exp(-9.80665 * (altitude - 11000) / (self.gas_constant_air * temperature))
+        else:
+            raise ValueError("Altitude exceeds the supported range of the standard atmosphere model.")
+        return temperature, pressure
+
+    def calculate_air_density(self, altitude):
+        # Computes air density using altitude (meters).
+        temperature, pressure = self.calculate_temperature_and_pressure_at_altitude(altitude)
+        return pressure / (self.gas_constant_air * temperature)
+
+    def calculate_dynamic_viscosity(self, altitude):
+        # Computes dynamic viscosity using Sutherland's formula.
+        temperature, _ = self.calculate_temperature_and_pressure_at_altitude(altitude)
+        return self.reference_viscosity * (temperature / self.reference_temperature) ** 1.5 * (self.reference_temperature + self.sutherland_constant) / (temperature + self.sutherland_constant)      
+      
     def calculate_force_gravity(self, projectile):
         height = projectile.pos.y
         return ((self.G * self.earth_mass * projectile.mass) / (self.earth_radius + height) ** 2) * vector(0, -1, 0)
@@ -30,20 +54,20 @@ class Environment:
         gravity_force = self.calculate_force_gravity(projectile)
         lever_arm = vector(0, 0, 0)  # Acts on Center of mass, so lever arm is zero
         return lever_arm.cross(gravity_force)  # Should return vector(0, 0, 0)
-
-    @staticmethod
-    def calculate_dynamic_viscosity_coefficient():
-        degrees_kelvin = Environment.air_temperature_celsius + 273.15                      
-        mu_nought = 1.733e-5  # Pa*s
-        T_nought = 288.2  # Kelvin
-        mu = mu_nought * ((degrees_kelvin / T_nought) ** 2) * ((degrees_kelvin + 110.4) / (T_nought + 110.4))
-        return mu
     
-    @staticmethod
-    def calculate_reynolds_number_p(projectile):  #Works for Spheres, in form from Cambridge Paper
+    def calculate_buoyant_force(self, projectile):
+        # Volume of the spherical particle
+        volume = (4 / 3) * pi * (projectile.radius ** 3)
+        acceleration_gravity = self.calculate_force_gravity(projectile) / projectile.mass
+        # Buoyant force using Archimedes' principle
+        buoyant_force = self.calculate_air_density(projectile.pos.y) * (4/3)  * volume * acceleration_gravity
+        return buoyant_force  # Acts opposing gravity
+    
+    def calculate_reynolds_number_p(self, projectile):  #Works for Spheres, in form from Cambridge Paper
         
         # Calculate the dynamic viscosity using the air temperature
-        mu_dynamic_viscosity_coefficient = Environment.calculate_dynamic_viscosity_coefficient()
+        altitude = projectile.pos.y
+        mu_dynamic_viscosity_coefficient = self.calculate_dynamic_viscosity(altitude)
         
         # Calculate freestream velocity
         freestream_velocity = mag(projectile.vel)
@@ -51,7 +75,7 @@ class Environment:
         # Use diameter as the reference length for a sphere
         reference_length = 2 * projectile.radius  
 
-        gamma_kinematic_viscosity = mu_dynamic_viscosity_coefficient / Environment.air_density
+        gamma_kinematic_viscosity = mu_dynamic_viscosity_coefficient / self.calculate_air_density(altitude)
         
         # Reynolds number formula: Re = (rho * V * L) / mu
         reynolds_number_p = (reference_length * freestream_velocity) / gamma_kinematic_viscosity
@@ -60,12 +84,13 @@ class Environment:
     
     def calculate_dimensionless_rotation_rate(self, projectile):
         # Calculate the dynamic viscosity using the air temperature
-        mu_dynamic_viscosity_coefficient = Environment.calculate_dynamic_viscosity_coefficient()
+        altitude = projectile.pos.y
+        mu_dynamic_viscosity_coefficient = self.calculate_dynamic_viscosity(altitude)
        
         # Use diameter as the reference length for a sphere
         reference_length = 2 * projectile.radius  
 
-        gamma_kinematic_viscosity = mu_dynamic_viscosity_coefficient / Environment.air_density
+        gamma_kinematic_viscosity = mu_dynamic_viscosity_coefficient / self.calculate_air_density(projectile.pos.y)
 
         Re_ohm = ( mag(projectile.angular_velocity) * projectile.radius**2 ) / (gamma_kinematic_viscosity)
 
@@ -133,8 +158,10 @@ class Environment:
     def calculate_lift_force(self, projectile):
         
         lift_coefficient = self.calculate_lift_coefficient(projectile)
+
+        altitude = projectile.pos.y
     
-        lift_force = (1/2) * lift_coefficient * math.pi * (projectile.radius ** 2) * self.air_density * mag2(projectile.vel) * norm(cross(-projectile.vel, projectile.angular_velocity)) 
+        lift_force = (1/2) * lift_coefficient * math.pi * (projectile.radius ** 2) * self.calculate_air_density(altitude) * mag2(projectile.vel) * norm(cross(-projectile.vel, projectile.angular_velocity)) 
 
         return lift_force
             
@@ -204,15 +231,11 @@ class Environment:
         :return: Drag force as a vector
         """
         drag_coefficient = self.calculate_drag_coefficient(projectile)
-    
-        if drag_coefficient == "Use Stokes Drag" :
-            Force = - 6 * math.pi * Environment.calculate_dynamic_viscosity_coefficient() * projectile.radius * mag(projectile.vel) * norm(projectile.vel)
-            return Force
-        
-        else:
-            # Force = 1/2 * fluid density * v * C_d * Cross-sectional Area * opposite to the direction of motion
-            Force = 0.5 * self.air_density * mag(projectile.vel) * drag_coefficient * math.pi * (projectile.radius ** 2) * -norm(projectile.vel)
-            return Force
+
+        altitude = projectile.pos.y
+         # Force = 1/2 * fluid density * v * C_d * Cross-sectional Area * opposite to the direction of motion
+        Force = 0.5 * self.calculate_air_density(altitude) * mag(projectile.vel) * drag_coefficient * math.pi * (projectile.radius ** 2) * -norm(projectile.vel)
+        return Force
         
         
         
@@ -236,7 +259,8 @@ class Environment:
         if "Torque Correlation" not in self.used_correlations:
                 self.used_correlations.append("Torque Correlation") 
 
-        second_order_torque = lambda_aspect_ratio * self.air_density * ( mag2(projectile.vel) ) * (projectile.radius ** 3) * dot(norm(projectile.angular_velocity), norm(projectile.vel)) * cross(norm(projectile.angular_velocity), norm(projectile.vel))
+        altitude = projectile.pos.y
+        second_order_torque = lambda_aspect_ratio * self.calculate_air_density(altitude) * ( mag2(projectile.vel) ) * (projectile.radius ** 3) * dot(norm(projectile.angular_velocity), norm(projectile.vel)) * cross(norm(projectile.angular_velocity), norm(projectile.vel))
         
         return second_order_torque
     
