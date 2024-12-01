@@ -11,8 +11,8 @@ from tqdm.notebook import tqdm  # Use tqdm.notebook for Jupyter compatibility
 # Parameters for the loop
 initial_angular_speeds = range(1, 1001, 1)  # From 1 to 1000 in increments of 5
 terminal_velocities = []  # To store terminal velocities for each angular speed
-terminal_x_velocities = []  # To store terminal x velocities
-terminal_y_velocities = []  # To store terminal y velocities
+terminal_x_velocities = []  # To store terminal x velocities for each angular speed
+terminal_y_velocities = []  # To store terminal y velocities for each angular speed
 
 # Loop through initial angular speeds with a progress bar
 for angular_speed in tqdm(initial_angular_speeds, desc="Simulating angular speeds"):
@@ -46,8 +46,7 @@ for angular_speed in tqdm(initial_angular_speeds, desc="Simulating angular speed
         gravity_force = environment.calculate_force_gravity(projectile)
         drag_force = environment.calculate_drag_force(projectile)
         lift_force = environment.calculate_lift_force(projectile)
-        buoyant_force = environment.calculate_buoyant_force(projectile)
-        net_force = gravity_force + drag_force + lift_force + buoyant_force
+        net_force = gravity_force + drag_force + lift_force
 
         # Torques
         torque = environment.calculate_torque(projectile)
@@ -77,7 +76,7 @@ for angular_speed in tqdm(initial_angular_speeds, desc="Simulating angular speed
         # Update the previous velocity value
         previous_velocity_magnitude = current_velocity_magnitude
 
-    # Append terminal velocities if not already added
+    # Append terminal velocity if not already added
     if not terminal_velocity_flag:
         terminal_velocities.append(mag(projectile.vel))
         terminal_x_velocities.append(projectile.vel.x)
@@ -99,10 +98,3 @@ df.to_excel(output_file, index=False, engine='openpyxl')
 print(f"Data saved to {output_file}")
 
 # Plot the results
-plt.figure(figsize=(10, 6))
-plt.plot(initial_angular_speeds, terminal_velocities, marker='o', linestyle='-', color='b')
-plt.title("Effect of Initial Angular Speed on Terminal Velocity")
-plt.xlabel("Initial Angular Speed (rad/s)")
-plt.ylabel("Terminal Velocity (m/s)")
-plt.grid(True)
-plt.show()
