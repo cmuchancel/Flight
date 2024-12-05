@@ -12,16 +12,16 @@ class Visualization:
 
           # Create walls and floor
         self.left_wall = box(pos=vector(-10, 700, 0),
-                             size=vector(10, 600, 5), color=color.red)
-        self.floor = box(pos=vector(40, 400, 0), size=vector(100, 10, 5), color=color.green)
-        projectile.trail = curve(color=color.magenta)
+                             size=vector(10, 600, 5), color=color.black)
+        self.floor = box(pos=vector(70, 400, 0), size=vector(150, 10, 5), color=color.black)
+        projectile.trail = curve(color=color.red)
         projectile.trail.append(pos=projectile.pos)
           # Create the projectile visualization based on type
         if isinstance(projectile, Ball):
             # Create a sphere if the projectile is a Ball
             self.projectile_visual = sphere(pos=projectile.pos, 
-                                            radius=10, 
-                                            color=color.orange)
+                                            radius=20, 
+                                            color=color.white*0.75)
         else:
             raise ValueError("Unsupported projectile type")
         
